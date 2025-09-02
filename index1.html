@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="si">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Student Marks Analysis (Offline)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+    h1 { margin-top: 0; }
+    .wrap { display: grid; gap: 16px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; }
+    label { font-weight: 600; display: block; margin-bottom: 8px; }
+    textarea { width: 100%; min-height: 220px; border-radius: 8px; padding: 10px; border: 1px solid #ccc; font-size: 14px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    button { padding: 10px 14px; border: 1px solid #ccc; border-radius: 8px; background: #f6f6f6; cursor: pointer; }
+    button.primary { background: #e9f3ff; border-color: #9cc4ff; }
+    .muted { color: #666; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: right; }
+    th { text-align: center; }
+    td:first-child, th:first-child { text-align: left; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+    .badge { display: inline-block; padding: 2px 8px; border: 1px solid #ccc; border-radius: 99px; font-size: 12px; }
+    .error { color: #c00; }
+    .ok { color: #0a7; }
+    .footer { margin-top: 24px; font-size: 12px; color: #666; }
+    .stats { display:flex; gap:12px; flex-wrap:wrap; }
+    .stat { border:1px dashed #ccc; border-radius:10px; padding:8px 10px; }
+  </style>
+</head>
+<body>
+  <h1>ශිෂ්‍ය ලකුණු විශ්ලේෂණය (Offline)</h1>
+  <div class="wrap">
+    <div class="card">
+      <label for="marks">ලකුණු ලැයිස්තුව (පේළියකට ලකුණක් — 0 සිට 100 දක්වා)</label>
+      <textarea id="marks" placeholder="උදා: 
+75
+62
+0
+88
+..." spellcheck="false"></textarea>
+      <div class="row">
+        <button class="primary" onclick="analyze()">ගණනය කරන්න</button>
+        <button onclick="clearAll()">මකන්න</button>
+        <span id="info" class="muted"></span>
+      </div>
+      <div id="alerts" class="muted" style="margin-top:8px;"></div>
+      <div class="stats" id="quickStats" style="display:none;">
+        <div class="stat"><b>ඇතුල් කළ සංඛ්‍යාව:</b> <span id="countTotal">0</span></div>
+        <div class="stat"><b>සාමාන්‍යය (Average):</b> <span id="avg">0</span></div>
+        <div class="stat"><b>අඩුම (Min):</b> <span id="min">0</span></div>
+        <div class="stat"><b>அධිකතම (Max):</b> <span id="max">0</span></div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>1 වගුව</h3>
+        <div class="muted">පරාසය: 0, 1–9, 20–39, 40–59, 60–79, 80–100</div>
+        <table id="table1">
+          <thead>
+            <tr><th>Range</th><th>Count</th><th>Percentage</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>2 වගුව</h3>
+        <div class="muted">පරාසය: 0–9, 10–19, …, 90–100</div>
+        <table id="table2">
+          <thead>
+            <tr><th>Range</th><th>Count</th><th>Percentage</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    🔒 සම්පූර්ණයෙන්ම Offline — ඔබ ඇතුල් කරන දත්ත අන්තර්ජාලයට යන්නේ නැහැ. <br>
+    💡 උපදෙස්: ලකුණු අතර කොමාව, ඉඩක්, හෝ නව පේළි භාවිතා කළාද ගැටලුවක් නැහැ. වැරදි අගයන් (උදා 101, -3) මඟ හැර දමයි.
+  </div>
+
+<script>
+const ranges1 = [
+  { label: "0", min: 0, max: 0, exactZero: true },
+  { label: "1-9", min: 1, max: 9 },
+  { label: "20-39", min: 20, max: 39 },
+  { label: "40-59", min: 40, max: 59 },
+  { label: "60-79", min: 60, max: 79 },
+  { label: "80-100", min: 80, max: 100 }
+];
+
+const ranges2 = [
+  { label: "0-9", min: 0, max: 9 },
+  { label: "10-19", min: 10, max: 19 },
+  { label: "20-29", min: 20, max: 29 },
+  { label: "30-39", min: 30, max: 39 },
+  { label: "40-49", min: 40, max: 49 },
+  { label: "50-59", min: 50, max: 59 },
+  { label: "60-69", min: 60, max: 69 },
+  { label: "70-79", min: 70, max: 79 },
+  { label: "80-89", min: 80, max: 89 },
+  { label: "90-100", min: 90, max: 100 }
+];
+
+function parseMarks(raw) {
+  // Accept numbers separated by newlines, commas, spaces, or tabs
+  const parts = raw
+    .split(/[\s,;]+/g)
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  const valid = [];
+  const invalid = [];
+
+  for (const p of parts) {
+    const v = Number(p);
+    if (!Number.isFinite(v) || !Number.isInteger(v)) {
+      invalid.push(p);
+      continue;
+    }
+    if (v < 0 || v > 100) {
+      invalid.push(p);
+      continue;
+    }
+    valid.push(v);
+  }
+  return { valid, invalid };
+}
+
+function summarize(arr) {
+  if (arr.length === 0) return { count: 0, avg: 0, min: 0, max: 0 };
+  const sum = arr.reduce((a,b)=>a+b,0);
+  const avg = sum / arr.length;
+  const min = Math.min(...arr);
+  const max = Math.max(...arr);
+  return { count: arr.length, avg, min, max };
+}
+
+function countByRanges(values, ranges) {
+  const counts = ranges.map(r => 0);
+  for (const v of values) {
+    for (let i=0; i<ranges.length; i++) {
+      const r = ranges[i];
+      if (r.exactZero) {
+        if (v === 0) { counts[i]++; break; }
+      } else {
+        if (v >= r.min && v <= r.max) { counts[i]++; break; }
+      }
+    }
+  }
+  return counts;
+}
+
+function renderTable(tbody, ranges, counts, total) {
+  tbody.innerHTML = "";
+  for (let i=0; i<ranges.length; i++) {
+    const r = ranges[i];
+    const c = counts[i];
+    const pct = total ? (c/total*100) : 0;
+    const tr = document.createElement("tr");
+    const tdR = document.createElement("td");
+    const tdC = document.createElement("td");
+    const tdP = document.createElement("td");
+    tdR.textContent = r.label;
+    tdC.textContent = c.toString();
+    tdP.textContent = pct.toFixed(2) + "%";
+    tr.appendChild(tdR);
+    tr.appendChild(tdC);
+    tr.appendChild(tdP);
+    tbody.appendChild(tr);
+  }
+}
+
+function analyze() {
+  const raw = document.getElementById("marks").value;
+  const { valid, invalid } = parseMarks(raw);
+  const alerts = document.getElementById("alerts");
+  const info = document.getElementById("info");
+
+  if (invalid.length) {
+    alerts.innerHTML = `<span class="error">වැරදි/වලංගු නොවන අගයන් ${invalid.length}ක් මඟ හැර දමා ඇත: </span><span class="badge">${invalid.slice(0,10).join(", ") + (invalid.length>10 ? " …" : "")}</span>`;
+  } else {
+    alerts.innerHTML = `<span class="ok">සාර්ථකයි: සියළු අගයන් වලංගුයි.</span>`;
+  }
+
+  const s = summarize(valid);
+  document.getElementById("quickStats").style.display = "flex";
+  document.getElementById("countTotal").textContent = s.count;
+  document.getElementById("avg").textContent = s.avg.toFixed(2);
+  document.getElementById("min").textContent = s.min.toString();
+  document.getElementById("max").textContent = s.max.toString();
+
+  info.textContent = `වලංගු ලකුණු ${s.count} ක්.`;
+
+  const counts1 = countByRanges(valid, ranges1);
+  const counts2 = countByRanges(valid, ranges2);
+
+  renderTable(document.querySelector("#table1 tbody"), ranges1, counts1, s.count);
+  renderTable(document.querySelector("#table2 tbody"), ranges2, counts2, s.count);
+}
+
+function clearAll() {
+  document.getElementById("marks").value = "";
+  document.getElementById("alerts").textContent = "";
+  document.getElementById("info").textContent = "";
+  document.getElementById("quickStats").style.display = "none";
+  document.querySelector("#table1 tbody").innerHTML = "";
+  document.querySelector("#table2 tbody").innerHTML = "";
+}
+</script>
+</body>
+</html>
