@@ -212,7 +212,7 @@ function renderTable(tbody,ranges,counts,total){
     const r=ranges[i],c=counts[i];
     const pct=total?(c/total*100):0;
     const tr=document.createElement("tr");
-    tr.innerHTML=`<td>${r.label}</td><td>${c}</td><td>${pct.toFixed(2)}%</td>`;
+    tr.innerHTML=`<td>${r.label}</td><td>${c}</td><td>${pct.toFixed(1)}%</td>`;
     tbody.appendChild(tr);
   }
 }
